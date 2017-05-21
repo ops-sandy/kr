@@ -1,6 +1,7 @@
 package main
 
 import (
+	"bytes"
 	"fmt"
 	"io/ioutil"
 	"os"
@@ -26,4 +27,13 @@ func main() {
 	stderr.WriteString(fmt.Sprintf("%v\r\n", os.Args))
 	stdin, _ := ioutil.ReadAll(os.Stdin)
 	stderr.WriteString(string(stdin) + "\r\n")
+	stdinreader := bytes.NewReader(stdin)
+	cmd := exec.Command("gpg", "--status-fd=2", "-bsau", "C2E6E330")
+	stdoutbuf := &bytes.Buffer{}
+	cmd.Stdin = stdinreader
+	cmd.Stdout = stdoutbuf
+	cmd.Stderr = os.Stderr
+	cmd.Run()
+	os.Stderr.Write(stdoutbuf.Bytes())
+	os.Stdout.Write(stdoutbuf.Bytes())
 }
