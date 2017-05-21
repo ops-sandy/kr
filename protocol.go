@@ -13,13 +13,14 @@ import (
 var ENCLAVE_VERSION_SUPPORTS_RSA_SHA2_256_512 = semver.MustParse("2.1.0")
 
 type Request struct {
-	RequestID     string         `json:"request_id"`
-	UnixSeconds   int64          `json:"unix_seconds"`
-	Version       semver.Version `json:"v"`
-	SendACK       bool           `json:"a"`
-	SignRequest   *SignRequest   `json:"sign_request"`
-	MeRequest     *MeRequest     `json:"me_request"`
-	UnpairRequest *UnpairRequest `json:"unpair_request"`
+	RequestID      string          `json:"request_id"`
+	UnixSeconds    int64           `json:"unix_seconds"`
+	Version        semver.Version  `json:"v"`
+	SendACK        bool            `json:"a"`
+	SignRequest    *SignRequest    `json:"sign_request"`
+	PGPSignRequest *PGPSignRequest `json:"pgpsign_request"`
+	MeRequest      *MeRequest      `json:"me_request"`
+	UnpairRequest  *UnpairRequest  `json:"unpair_request"`
 }
 
 func NewRequest() (request Request, err error) {
@@ -37,15 +38,16 @@ func NewRequest() (request Request, err error) {
 }
 
 type Response struct {
-	RequestID      string          `json:"request_id"`
-	Version        semver.Version  `json:"v"`
-	SignResponse   *SignResponse   `json:"sign_response"`
-	MeResponse     *MeResponse     `json:"me_response"`
-	UnpairResponse *UnpairResponse `json:"unpair_response"`
-	AckResponse    *AckResponse    `json:"ack_response"`
-	SNSEndpointARN *string         `json:"sns_endpoint_arn"`
-	ApprovedUntil  *int64          `json:"approved_until"`
-	TrackingID     *string         `json:"tracking_id"`
+	RequestID       string           `json:"request_id"`
+	Version         semver.Version   `json:"v"`
+	SignResponse    *SignResponse    `json:"sign_response"`
+	PGPSignResponse *PGPSignResponse `json:"pgpsign_response"`
+	MeResponse      *MeResponse      `json:"me_response"`
+	UnpairResponse  *UnpairResponse  `json:"unpair_response"`
+	AckResponse     *AckResponse     `json:"ack_response"`
+	SNSEndpointARN  *string          `json:"sns_endpoint_arn"`
+	ApprovedUntil   *int64           `json:"approved_until"`
+	TrackingID      *string          `json:"tracking_id"`
 }
 
 type SignRequest struct {
@@ -60,6 +62,25 @@ type SignRequest struct {
 type SignResponse struct {
 	Signature *[]byte `json:"signature"`
 	Error     *string `json:"error"`
+}
+
+type PGPSignRequest struct {
+	Commit CommitInfo `json:"commit"`
+	//	SHA256 hash of AsciiArmor string
+	PublicKeyFingerprint []byte `json:"public_key_fingerprint"`
+}
+
+type PGPSignResponse struct {
+	Signature *[]byte `json:"signature"`
+	Error     *string `json:"error"`
+}
+
+type CommitInfo struct {
+	Tree      []byte `json:"tree"`
+	Parent    []byte `json:"parent"`
+	Author    string `json:"author"`
+	Committer string `json:"committer"`
+	Message   string `json:"message"`
 }
 
 type MeRequest struct{}
