@@ -3,11 +3,13 @@ package main
 import (
 	"bufio"
 	"bytes"
-	"encoding/hex"
 	"fmt"
 	"io/ioutil"
 	"os"
+	"os/exec"
 	"strings"
+
+	"github.com/urfave/cli"
 
 	"github.com/kryptco/kr"
 	"github.com/kryptco/kr/krdclient"
@@ -42,6 +44,73 @@ func readLineIgnoringFirstToken(reader *bufio.Reader) (b []byte, err error) {
 
 func main() {
 	setupTTY()
+	app := cli.NewApp()
+	app.Name = "krgpg"
+	app.Usage = "Sign git commits with your Kryptonite key"
+	app.Flags = []cli.Flag{
+		cli.BoolFlag{
+			Name:  "a",
+			Usage: "Ouput ascii armor",
+		},
+		cli.BoolFlag{
+			Name:  "b,detach-sign",
+			Usage: "Create a detached signature",
+		},
+		cli.BoolFlag{
+			Name:  "s,sign",
+			Usage: "Create a signature",
+		},
+		cli.StringFlag{
+			Name:  "u,local-user",
+			Value: "",
+			Usage: "User ID",
+		},
+		cli.StringFlag{
+			Name:  "status-fd",
+			Value: "",
+			Usage: "status file descriptor",
+		},
+		cli.BoolFlag{
+			Name:  "bsau",
+			Usage: "Git method of passing in detach-sign ascii armor flags",
+		},
+		cli.BoolFlag{
+			Name:  "verify",
+			Usage: "Verify a signature",
+		},
+		cli.StringFlag{
+			Name:  "keyid-format",
+			Usage: "Key ID format",
+		},
+	}
+	app.Action = func(c *cli.Context) error {
+		if c.Bool("bsau") || (c.Bool("s") && c.Bool("b") && c.Bool("a")) {
+			//	TODO: verify userID matches stored kryptonite PGP key
+			signGitCommit()
+		} else {
+			redirectToGPG()
+		}
+		return nil
+	}
+	app.OnUsageError = func(c *cli.Context, err error, isSubcommand bool) error {
+		stderr.WriteString(kr.Red(err.Error() + "\n"))
+		redirectToGPG()
+		return nil
+	}
+
+	app.Run(os.Args)
+	return
+}
+
+func redirectToGPG() {
+	gpgCommand := exec.Command("gpg", os.Args[1:]...)
+	gpgCommand.Stdin = os.Stdin
+	gpgCommand.Stdout = os.Stdout
+	gpgCommand.Stderr = os.Stderr
+	gpgCommand.Run()
+}
+
+func signGitCommit() {
 	stdinBytes, _ := ioutil.ReadAll(os.Stdin)
 	stderr.WriteString(string(stdinBytes))
 	reader := bufio.NewReader(bytes.NewReader(stdinBytes))
@@ -82,13 +151,9 @@ func main() {
 		Committer: committer,
 		Message:   message,
 	}
-	fp, err := hex.DecodeString(os.Args[len(os.Args)-1])
-	if err != nil {
-		fp = []byte{}
-	}
 	request := kr.GitSignRequest{
-		Commit:               commit,
-		PublicKeyFingerprint: fp,
+		Commit: commit,
+		UserId: os.Args[len(os.Args)-1],
 	}
 	response, err := krdclient.RequestGitSignature(request)
 	if err != nil {
