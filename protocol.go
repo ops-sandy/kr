@@ -3,10 +3,12 @@ package kr
 import (
 	"bytes"
 	"encoding/json"
+	"fmt"
 	"net/http"
 	"time"
 
 	"github.com/blang/semver"
+	"golang.org/x/crypto/openpgp/armor"
 )
 
 //	Previous enclave versions assume SHA1 for all RSA keys regardless of the PubKeyAlgorithm specified in the signature payload
@@ -18,7 +20,7 @@ type Request struct {
 	Version        semver.Version  `json:"v"`
 	SendACK        bool            `json:"a"`
 	SignRequest    *SignRequest    `json:"sign_request"`
-	PGPSignRequest *PGPSignRequest `json:"pgpsign_request"`
+	GitSignRequest *GitSignRequest `json:"git_sign_request"`
 	MeRequest      *MeRequest      `json:"me_request"`
 	UnpairRequest  *UnpairRequest  `json:"unpair_request"`
 }
@@ -41,7 +43,7 @@ type Response struct {
 	RequestID       string           `json:"request_id"`
 	Version         semver.Version   `json:"v"`
 	SignResponse    *SignResponse    `json:"sign_response"`
-	PGPSignResponse *PGPSignResponse `json:"pgpsign_response"`
+	GitSignResponse *GitSignResponse `json:"git_sign_response"`
 	MeResponse      *MeResponse      `json:"me_response"`
 	UnpairResponse  *UnpairResponse  `json:"unpair_response"`
 	AckResponse     *AckResponse     `json:"ack_response"`
@@ -64,23 +66,45 @@ type SignResponse struct {
 	Error     *string `json:"error"`
 }
 
-type PGPSignRequest struct {
+type GitSignRequest struct {
 	Commit CommitInfo `json:"commit"`
 	//	SHA256 hash of AsciiArmor string
 	PublicKeyFingerprint []byte `json:"public_key_fingerprint"`
 }
 
-type PGPSignResponse struct {
+type GitSignResponse struct {
 	Signature *[]byte `json:"signature"`
 	Error     *string `json:"error"`
+}
+
+func (gsr GitSignResponse) AsciiArmorSignature() (s string, err error) {
+	if gsr.Signature == nil {
+		err = fmt.Errorf("no signature")
+		return
+	}
+	output := &bytes.Buffer{}
+	input, err := armor.Encode(output, "PGP SIGNATURE", map[string]string{"Comment": "Created With Kryptonite"})
+	if err != nil {
+		return
+	}
+	_, err = input.Write(*gsr.Signature)
+	if err != nil {
+		return
+	}
+	err = input.Close()
+	if err != nil {
+		return
+	}
+	s = string(output.Bytes())
+	return
 }
 
 type CommitInfo struct {
 	Tree      []byte `json:"tree"`
 	Parent    []byte `json:"parent"`
-	Author    string `json:"author"`
-	Committer string `json:"committer"`
-	Message   string `json:"message"`
+	Author    []byte `json:"author"`
+	Committer []byte `json:"committer"`
+	Message   []byte `json:"message"`
 }
 
 type MeRequest struct{}

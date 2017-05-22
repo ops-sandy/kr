@@ -1,11 +1,16 @@
 package main
 
 import (
+	"bufio"
 	"bytes"
+	"encoding/hex"
 	"fmt"
 	"io/ioutil"
 	"os"
-	"os/exec"
+	"strings"
+
+	"github.com/kryptco/kr"
+	"github.com/kryptco/kr/krdclient"
 )
 
 var stderr *os.File
@@ -21,19 +26,83 @@ func setupTTY() {
 	}
 }
 
+func readLineIgnoringFirstToken(reader *bufio.Reader) (b []byte, err error) {
+	line, err := reader.ReadString('\n')
+	if err != nil {
+		return
+	}
+	toks := strings.Fields(line)
+	if len(toks) == 0 {
+		err = fmt.Errorf("no tokens")
+		return
+	}
+	b = []byte(strings.Join(toks[1:], " "))
+	return
+}
+
 func main() {
-	exec.Command("export", "GPG_TTY=`tty`").Run()
 	setupTTY()
-	stderr.WriteString(fmt.Sprintf("%v\r\n", os.Args))
-	stdin, _ := ioutil.ReadAll(os.Stdin)
-	stderr.WriteString(string(stdin) + "\r\n")
-	stdinreader := bytes.NewReader(stdin)
-	cmd := exec.Command("gpg", "--status-fd=2", "-bsau", "C2E6E330")
-	stdoutbuf := &bytes.Buffer{}
-	cmd.Stdin = stdinreader
-	cmd.Stdout = stdoutbuf
-	cmd.Stderr = os.Stderr
-	cmd.Run()
-	os.Stderr.Write(stdoutbuf.Bytes())
-	os.Stdout.Write(stdoutbuf.Bytes())
+	stdinBytes, _ := ioutil.ReadAll(os.Stdin)
+	stderr.WriteString(string(stdinBytes))
+	reader := bufio.NewReader(bytes.NewReader(stdinBytes))
+	tree, err := readLineIgnoringFirstToken(reader)
+	if err != nil {
+		stderr.WriteString("error parsing commit tree")
+		stderr.WriteString(err.Error())
+		os.Exit(1)
+	}
+	parent, err := readLineIgnoringFirstToken(reader)
+	if err != nil {
+		stderr.WriteString("error parsing commit parent")
+		stderr.WriteString(err.Error())
+		os.Exit(1)
+	}
+	author, err := readLineIgnoringFirstToken(reader)
+	if err != nil {
+		stderr.WriteString("error parsing commit author")
+		stderr.WriteString(err.Error())
+		os.Exit(1)
+	}
+	committer, err := readLineIgnoringFirstToken(reader)
+	if err != nil {
+		stderr.WriteString("error parsing commit committer")
+		stderr.WriteString(err.Error())
+		os.Exit(1)
+	}
+	message, err := ioutil.ReadAll(reader)
+	if err != nil {
+		stderr.WriteString("error parsing commit message")
+		stderr.WriteString(err.Error())
+		os.Exit(1)
+	}
+	commit := kr.CommitInfo{
+		Tree:      tree,
+		Parent:    parent,
+		Author:    author,
+		Committer: committer,
+		Message:   message,
+	}
+	fp, err := hex.DecodeString(os.Args[len(os.Args)-1])
+	if err != nil {
+		fp = []byte{}
+	}
+	request := kr.GitSignRequest{
+		Commit:               commit,
+		PublicKeyFingerprint: fp,
+	}
+	response, err := krdclient.RequestGitSignature(request)
+	if err != nil {
+		stderr.WriteString(err.Error())
+		os.Exit(1)
+	}
+	sig, err := response.AsciiArmorSignature()
+	if err != nil {
+		stderr.WriteString(err.Error())
+		os.Exit(1)
+	}
+	os.Stdout.WriteString(sig)
+	os.Stdout.Write([]byte("\n"))
+	os.Stdout.Close()
+	os.Stderr.WriteString("\n[GNUPG:] SIG_CREATED ")
+	os.Exit(0)
 }
