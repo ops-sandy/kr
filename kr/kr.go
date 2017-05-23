@@ -462,6 +462,9 @@ func awsCommand(c *cli.Context) (err error) {
 }
 
 func codesignCommand(c *cli.Context) (err error) {
+	go func() {
+		kr.Analytics{}.PostEventUsingPersistedTrackingID("kr", "codesign", nil, nil)
+	}()
 	stderr := os.Stderr
 	err = exec.Command("git", "config", "--global", "gpg.program", "krgpg").Run()
 	if err != nil {
@@ -532,6 +535,17 @@ func codesignCommand(c *cli.Context) (err error) {
 	}
 
 	os.Stderr.WriteString("You can print this key in the future by running " + kr.Cyan("kr me pgp") + " or copy it to your clipboard by running " + kr.Cyan("kr copy pgp") + "\r\n")
+
+	os.Stderr.WriteString("Would you like to enable " + kr.Cyan("automatic commit signing") + "? [y/n]")
+	os.Stdin.Read(in)
+	if in[0] == 'y' {
+		err = exec.Command("git", "config", "--global", "commit.gpgSign", "true").Run()
+		if err != nil {
+			PrintErr(os.Stderr, err.Error()+"\r\n")
+		}
+	} else {
+		os.Stderr.WriteString("You can manually create a signed git commit by running " + kr.Cyan("git commit -S") + "\r\n")
+	}
 	return
 }
 
