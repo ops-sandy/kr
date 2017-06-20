@@ -67,6 +67,7 @@ type EnclaveClientI interface {
 	GetCachedMe() *kr.Profile
 	RequestSignature(kr.SignRequest, func()) (*kr.SignResponse, semver.Version, error)
 	RequestGitSignature(kr.GitSignRequest, func()) (*kr.GitSignResponse, semver.Version, error)
+	RequestBlobSignature(kr.BlobSignRequest, func()) (*kr.BlobSignResponse, semver.Version, error)
 	RequestNoOp() error
 }
 
@@ -426,6 +427,44 @@ func (client *EnclaveClient) RequestGitSignature(signRequest kr.GitSignRequest, 
 	return
 }
 
+func (client *EnclaveClient) RequestBlobSignature(blobSignRequest kr.BlobSignRequest, onACK func()) (blobSignResponse *kr.BlobSignResponse, enclaveVersion semver.Version, err error) {
+	start := time.Now()
+	request, err := kr.NewRequest()
+	if err != nil {
+		client.log.Error(err)
+		return
+	}
+	request.BlobSignRequest = &blobSignRequest
+	alertText := "Incoming blog sign request. Open Kryptonite to continue."
+	ps := client.getPairingSecret()
+	if ps != nil {
+		alertText = "Request from " + ps.DisplayName()
+	}
+	callback, err := client.tryRequest(request, client.Timeouts.Sign.Fail, client.Timeouts.Sign.Alert, alertText, onACK)
+	if err != nil {
+		if err == ErrTimeout {
+			client.postEvent("blob_signature", "timeout", nil, nil)
+		} else {
+			errStr := err.Error()
+			client.postEvent("blob_signature", "error", &errStr, nil)
+		}
+		client.log.Error(err)
+		return
+	}
+	if callback != nil && callback.response.BlobSignResponse != nil {
+		response := callback.response
+		blobSignResponse = response.BlobSignResponse
+		enclaveVersion = response.Version
+		millis := uint64(time.Since(start) / time.Millisecond)
+		client.log.Notice("BlobSignature response took", millis, "ms")
+		client.postEvent("blob_signature", "success", &callback.medium, &millis)
+		if blobSignResponse.Error != nil {
+			client.log.Error("BlobSignature error:", *blobSignResponse.Error)
+		}
+	}
+	return
+}
+
 func (client *EnclaveClient) RequestNoOp() (err error) {
 	request, err := kr.NewRequest()
 	if err != nil {
@@ -456,6 +495,9 @@ func (client *EnclaveClient) tryRequest(request kr.Request, timeout time.Duratio
 	cb := make(chan *callbackT, 5)
 	pairingSecret := client.getPairingSecret()
 	if pairingSecret == nil {
+
+		client.log.Notice("pairing secret nil")
+
 		err = ErrNotPaired
 		return
 	}
@@ -510,6 +552,7 @@ func (client *EnclaveClient) tryRequest(request kr.Request, timeout time.Duratio
 		}
 	}()
 	if callback == nil && !client.IsPaired() {
+		client.log.Notice("callback nil and not paired")
 		err = ErrNotPaired
 	}
 	return
@@ -707,8 +750,12 @@ func (client *EnclaveClient) handleMessage(fromPairing *kr.PairingSecret, messag
 	var response kr.Response
 	err = json.Unmarshal(message, &response)
 	if err != nil {
+		client.log.Notice("handleMessageError: ", err)
 		return
 	}
+
+	client.log.Notice("Got message: ", string(message))
+
 	client.Lock()
 	defer client.Unlock()
 	client.lastActivityByMedium[medium] = time.Now()

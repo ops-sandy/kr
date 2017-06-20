@@ -59,6 +59,10 @@ func main() {
 			Usage: "Create a detached signature",
 		},
 		cli.BoolFlag{
+			Name:  "sb,blob-sign",
+			Usage: "Create a detached signature of a blob",
+		},
+		cli.BoolFlag{
 			Name:  "s,sign",
 			Usage: "Create a signature",
 		},
@@ -89,6 +93,8 @@ func main() {
 		if c.Bool("bsau") || (c.Bool("s") && c.Bool("b") && c.Bool("a")) {
 			//	TODO: verify userID matches stored kryptonite PGP key
 			signGit()
+		} else if c.Bool("sb") || c.Bool("blob-sign") {
+			signBlob()
 		} else {
 			redirectToGPG()
 		}
@@ -186,7 +192,7 @@ func signGitCommit(tree string, reader *bufio.Reader) {
 		UserId: os.Args[len(os.Args)-1],
 	}
 	stderr.WriteString(kr.Cyan("Kryptonite ▶ Requesting git commit signature from phone") + "\r\n")
-	response := requestSignature(request)
+	response := requestGitSignature(request)
 	sig, err := response.AsciiArmorSignature()
 	if err != nil {
 		stderr.WriteString(err.Error())
@@ -242,7 +248,7 @@ func signGitTag(object string, reader *bufio.Reader) {
 		UserId: os.Args[len(os.Args)-1],
 	}
 	stderr.WriteString(kr.Cyan("Kryptonite ▶ Requesting git tag signature from phone") + "\r\n")
-	response := requestSignature(request)
+	response := requestGitSignature(request)
 	sig, err := response.AsciiArmorSignature()
 	if err != nil {
 		stderr.WriteString(err.Error())
@@ -255,8 +261,66 @@ func signGitTag(object string, reader *bufio.Reader) {
 	os.Exit(0)
 }
 
-func requestSignature(request kr.Request) kr.GitSignResponse {
+func signBlob() {
+	reader := bufio.NewReader(os.Stdin)
+	blob, err := ioutil.ReadAll(reader)
+	if err != nil {
+		stderr.WriteString("error parsing blob")
+		stderr.WriteString(err.Error())
+		os.Exit(1)
+	}
+
+	request, err := kr.NewRequest()
+	if err != nil {
+		stderr.WriteString(err.Error())
+		os.Exit(1)
+	}
+
+	startLogger(request.NotifyPrefix())
+	request.BlobSignRequest = &kr.BlobSignRequest{
+		Blob: string(blob),
+	}
+	stderr.WriteString(kr.Cyan("Kryptonite ▶ Requesting blob signature from phone") + "\r\n")
+	response := requestBlobSignature(request)
+	sig, err := response.AsciiArmorSignature()
+	if err != nil {
+		stderr.WriteString(err.Error())
+		os.Exit(1)
+	}
+	os.Stdout.WriteString(sig)
+	os.Stdout.Write([]byte("\n"))
+	os.Stdout.Close()
+	os.Exit(0)
+}
+
+func requestGitSignature(request kr.Request) kr.GitSignResponse {
 	response, err := krdclient.RequestGitSignature(request)
+	if err != nil {
+		switch err {
+		case kr.ErrNotPaired:
+			stderr.WriteString(kr.Yellow("Kryptonite ▶ "+kr.ErrNotPaired.Error()) + "\r\n")
+			os.Exit(1)
+		case kr.ErrConnectingToDaemon:
+			stderr.WriteString(kr.Red("Kryptonite ▶ Could not connect to Kryptonite daemon. Make sure it is running by typing \"kr restart\"\r\n"))
+			os.Exit(1)
+		default:
+			stderr.WriteString(kr.Red("Kryptonite ▶ Unknown error: " + err.Error() + "\r\n"))
+			os.Exit(1)
+		}
+	}
+	if response.Error != nil {
+		switch *response.Error {
+		case "rejected":
+			stderr.WriteString(kr.Red("Kryptonite ▶ " + kr.ErrRejected.Error() + "\r\n"))
+			os.Exit(1)
+		}
+	}
+	stderr.WriteString(kr.Green("Kryptonite ▶ Success. Request Allowed ✔") + "\r\n")
+	return response
+}
+
+func requestBlobSignature(request kr.Request) kr.BlobSignResponse {
+	response, err := krdclient.RequestBlobSignature(request)
 	if err != nil {
 		switch err {
 		case kr.ErrNotPaired:

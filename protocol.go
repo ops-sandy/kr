@@ -15,14 +15,15 @@ import (
 var ENCLAVE_VERSION_SUPPORTS_RSA_SHA2_256_512 = semver.MustParse("2.1.0")
 
 type Request struct {
-	RequestID      string          `json:"request_id"`
-	UnixSeconds    int64           `json:"unix_seconds"`
-	Version        semver.Version  `json:"v"`
-	SendACK        bool            `json:"a"`
-	SignRequest    *SignRequest    `json:"sign_request,omitempty"`
-	GitSignRequest *GitSignRequest `json:"git_sign_request,omitempty"`
-	MeRequest      *MeRequest      `json:"me_request,omitempty"`
-	UnpairRequest  *UnpairRequest  `json:"unpair_request,omitempty"`
+	RequestID       string           `json:"request_id"`
+	UnixSeconds     int64            `json:"unix_seconds"`
+	Version         semver.Version   `json:"v"`
+	SendACK         bool             `json:"a"`
+	SignRequest     *SignRequest     `json:"sign_request,omitempty"`
+	GitSignRequest  *GitSignRequest  `json:"git_sign_request,omitempty"`
+	BlobSignRequest *BlobSignRequest `json:"blob_sign_request,omitempty"`
+	MeRequest       *MeRequest       `json:"me_request,omitempty"`
+	UnpairRequest   *UnpairRequest   `json:"unpair_request,omitempty"`
 }
 
 func NewRequest() (request Request, err error) {
@@ -44,16 +45,17 @@ func (r Request) NotifyPrefix() string {
 }
 
 type Response struct {
-	RequestID       string           `json:"request_id"`
-	Version         semver.Version   `json:"v"`
-	SignResponse    *SignResponse    `json:"sign_response,omitempty"`
-	GitSignResponse *GitSignResponse `json:"git_sign_response,omitempty"`
-	MeResponse      *MeResponse      `json:"me_response,omitempty"`
-	UnpairResponse  *UnpairResponse  `json:"unpair_response,omitempty"`
-	AckResponse     *AckResponse     `json:"ack_response,omitempty"`
-	SNSEndpointARN  *string          `json:"sns_endpoint_arn,omitempty"`
-	ApprovedUntil   *int64           `json:"approved_until,omitempty"`
-	TrackingID      *string          `json:"tracking_id,omitempty"`
+	RequestID        string            `json:"request_id"`
+	Version          semver.Version    `json:"v"`
+	SignResponse     *SignResponse     `json:"sign_response,omitempty"`
+	GitSignResponse  *GitSignResponse  `json:"git_sign_response,omitempty"`
+	BlobSignResponse *BlobSignResponse `json:"blob_sign_response,omitempty"`
+	MeResponse       *MeResponse       `json:"me_response,omitempty"`
+	UnpairResponse   *UnpairResponse   `json:"unpair_response,omitempty"`
+	AckResponse      *AckResponse      `json:"ack_response,omitempty"`
+	SNSEndpointARN   *string           `json:"sns_endpoint_arn,omitempty"`
+	ApprovedUntil    *int64            `json:"approved_until,omitempty"`
+	TrackingID       *string           `json:"tracking_id,omitempty"`
 }
 
 type SignRequest struct {
@@ -81,6 +83,15 @@ type GitSignResponse struct {
 	Error     *string `json:"error,omitempty"`
 }
 
+type BlobSignRequest struct {
+	Blob string `json:"blob"`
+}
+
+type BlobSignResponse struct {
+	Signature *[]byte `json:"signature,omitempty"`
+	Error     *string `json:"error,omitempty"`
+}
+
 func (gsr GitSignResponse) AsciiArmorSignature() (s string, err error) {
 	if gsr.Signature == nil {
 		err = fmt.Errorf("no signature")
@@ -92,6 +103,28 @@ func (gsr GitSignResponse) AsciiArmorSignature() (s string, err error) {
 		return
 	}
 	_, err = input.Write(*gsr.Signature)
+	if err != nil {
+		return
+	}
+	err = input.Close()
+	if err != nil {
+		return
+	}
+	s = string(output.Bytes())
+	return
+}
+
+func (bsr BlobSignResponse) AsciiArmorSignature() (s string, err error) {
+	if bsr.Signature == nil {
+		err = fmt.Errorf("no signature")
+		return
+	}
+	output := &bytes.Buffer{}
+	input, err := armor.Encode(output, "PGP SIGNATURE", map[string]string{"Comment": "Created With Kryptonite"})
+	if err != nil {
+		return
+	}
+	_, err = input.Write(*bsr.Signature)
 	if err != nil {
 		return
 	}
@@ -140,7 +173,7 @@ func (request Request) HTTPRequest() (httpRequest *http.Request, err error) {
 }
 
 func (request Request) IsNoOp() bool {
-	return request.SignRequest == nil && request.MeRequest == nil && request.UnpairRequest == nil
+	return request.SignRequest == nil && request.MeRequest == nil && request.UnpairRequest == nil && request.BlobSignRequest == nil && request.GitSignRequest == nil
 }
 
 type UnpairRequest struct{}
