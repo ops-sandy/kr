@@ -130,6 +130,8 @@ func main() {
 		} else if (c.Bool("sign") || c.Bool("s")) && c.String("u") == "" {
 			isDetached := c.Bool("b") || c.Bool("detach-sign")
 			signBlob(isDetached)
+		} else if (c.Bool("b") || c.Bool("detach-sign")) && (c.String("u") == pgpFingerprint || c.String("u") == "") {
+			signBlob(true)
 		} else if c.Bool("fingerprint") && c.Bool("K") {
 
 			gpgFingerprintString, err := profile.PGPPublicKeyGPGFingerprintString()
