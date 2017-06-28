@@ -125,9 +125,11 @@ func main() {
 		}
 
 		if (c.Bool("sign") || c.Bool("s")) && c.String("u") == pgpFingerprint {
-			signBlob()
+			isDetached := c.Bool("b") || c.Bool("detach-sign")
+			signBlob(isDetached)
 		} else if (c.Bool("sign") || c.Bool("s")) && c.String("u") == "" {
-			signBlob()
+			isDetached := c.Bool("b") || c.Bool("detach-sign")
+			signBlob(isDetached)
 		} else if c.Bool("fingerprint") && c.Bool("K") {
 
 			gpgFingerprintString, err := profile.PGPPublicKeyGPGFingerprintString()
@@ -304,7 +306,7 @@ func signGitTag(object string, reader *bufio.Reader) {
 	os.Exit(0)
 }
 
-func signBlob() {
+func signBlob(isDetached bool) {
 	reader := bufio.NewReader(os.Stdin)
 	blobBytes, err := ioutil.ReadAll(reader)
 	if err != nil {
@@ -323,7 +325,8 @@ func signBlob() {
 
 	startLogger(request.NotifyPrefix())
 	request.BlobSignRequest = &kr.BlobSignRequest{
-		Blob: blob,
+		Blob:     blob,
+		Detached: isDetached,
 	}
 	stderr.WriteString(kr.Cyan("Kryptonite ▶ Requesting blob signature from phone") + "\r\n")
 	response := requestBlobSignature(request)

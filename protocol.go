@@ -84,7 +84,8 @@ type GitSignResponse struct {
 }
 
 type BlobSignRequest struct {
-	Blob string `json:"blob"`
+	Blob     string `json:"blob"`
+	Detached bool   `json:"detached"`
 }
 
 type BlobSignResponse struct {
