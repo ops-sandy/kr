@@ -251,6 +251,24 @@ func mePGPCommand(c *cli.Context) (err error) {
 	return
 }
 
+func mePGPFingerprintCommand(c *cli.Context) (err error) {
+	me, err := krdclient.RequestMe()
+	if err != nil {
+		PrintFatal(os.Stderr, err.Error())
+	}
+
+	pgp, err := me.PGPPublicKeySHA1Fingerprint()
+	if err != nil {
+		PrintFatal(os.Stderr, "You do not yet have a PGP public key. Make sure you have the latest version of the Kryptonite app and that you have run "+kr.Cyan("kr codesign")+" successfully.")
+	}
+	fmt.Println(pgp)
+
+	PrintErr(os.Stderr, "\r\nThis is your PGP Public Key fingerprint. To view your PGP Public Key, run "+kr.Cyan("kr me pgp")+". Type"+kr.Cyan("kr")+" to see all available commands.")
+
+	kr.Analytics{}.PostEventUsingPersistedTrackingID("kr", "me pgp fingerprint", nil, nil)
+	return
+}
+
 func copyCommand(c *cli.Context) (err error) {
 	copyKey()
 	PrintErr(os.Stderr, "SSH public key copied to clipboard.")
@@ -555,6 +573,13 @@ func main() {
 					Name:   "pgp",
 					Usage:  "Print your PGP public key.",
 					Action: mePGPCommand,
+					Subcommands: []cli.Command{
+						cli.Command{
+							Name:   "fingerprint",
+							Usage:  "Print your PGP public key fingerprint.",
+							Action: mePGPFingerprintCommand,
+						},
+					},
 				},
 			},
 		},

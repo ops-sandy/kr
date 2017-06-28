@@ -78,7 +78,7 @@ func (p Profile) PGPPublicKeySHA1Fingerprint() (s string, err error) {
 		var pkt packet.Packet
 		pkt, err = packet.Read(reader)
 		if err != nil {
-			return
+			break
 		}
 		switch pkt := pkt.(type) {
 		case *packet.PublicKey:
@@ -91,4 +91,45 @@ func (p Profile) PGPPublicKeySHA1Fingerprint() (s string, err error) {
 	}
 	err = fmt.Errorf("no pgp public key packet found")
 	return
+}
+
+func (p Profile) PGPPublicKeyGPGFingerprintString() (s string, err error) {
+	if p.PGPPublicKey == nil {
+		err = fmt.Errorf("no pgp public key")
+		return
+	}
+	reader := bytes.NewReader(*p.PGPPublicKey)
+	for {
+		var pkt packet.Packet
+		pkt, err = packet.Read(reader)
+		if err != nil {
+			break
+		}
+		switch pkt := pkt.(type) {
+		case *packet.PublicKey:
+			keyID := strings.ToUpper(pkt.KeyIdString())
+			algo := pkt.PubKeyAlgo
+			seconds := fmt.Sprintf("%d", pkt.CreationTime.Unix())
+
+			fp := pkt.Fingerprint[:]
+			hexFp := hex.EncodeToString(fp)
+
+			if algo == packet.PubKeyAlgoEdDSA {
+				s = "sec:u:" + "256" + ":" + fmt.Sprintf("%d", algo) + ":" + keyID + ":" + seconds + ":::u:::scSC:::+::" + "ed25519" + "::::"
+
+			} else {
+				s = "sec:u:" + "4096" + ":" + fmt.Sprintf("%d", algo) + ":" + keyID + ":" + seconds + ":::u:::scSC:::+::" + "23" + "::::"
+			}
+
+			s += "\n"
+			s += "fpr:::::::::" + strings.ToUpper(hexFp) + ":"
+
+			return
+		default:
+			continue
+		}
+	}
+	err = fmt.Errorf("no pgp public key packet found")
+	return
+
 }

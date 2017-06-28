@@ -120,7 +120,7 @@ func (bsr BlobSignResponse) AsciiArmorSignature() (s string, err error) {
 		return
 	}
 	output := &bytes.Buffer{}
-	input, err := armor.Encode(output, "PGP SIGNATURE", map[string]string{"Comment": "Created With Kryptonite"})
+	input, err := armor.Encode(output, "PGP MESSAGE", map[string]string{"Comment": "Created With Kryptonite"})
 	if err != nil {
 		return
 	}

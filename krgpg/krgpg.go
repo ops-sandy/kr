@@ -46,12 +46,14 @@ func readLineSplittingFirstToken(reader *bufio.Reader) (firstToken string, rest 
 
 func main() {
 	setupTTY()
+	ioutil.WriteFile("/tmp/kbout-gpg", []byte("args: "+strings.Join(os.Args, ", ")), 0700)
+
 	app := cli.NewApp()
 	app.Name = "krgpg"
 	app.Usage = "Sign git commits with your Kryptonite key"
 	app.Flags = []cli.Flag{
 		cli.BoolFlag{
-			Name:  "a",
+			Name:  "a,armor",
 			Usage: "Ouput ascii armor",
 		},
 		cli.BoolFlag{
@@ -59,12 +61,28 @@ func main() {
 			Usage: "Create a detached signature",
 		},
 		cli.BoolFlag{
-			Name:  "sb,blob-sign",
-			Usage: "Create a detached signature of a blob",
+			Name:  "blob-sign",
+			Usage: "Create an attached signature of a blob",
 		},
 		cli.BoolFlag{
 			Name:  "s,sign",
 			Usage: "Create a signature",
+		},
+		cli.BoolFlag{
+			Name:  "K",
+			Usage: "List keys",
+		},
+		cli.BoolFlag{
+			Name:  "fingerprint",
+			Usage: "show fingerprint",
+		},
+		cli.BoolFlag{
+			Name:  "no-tty",
+			Usage: "do not allocate a tty",
+		},
+		cli.BoolFlag{
+			Name:  "with-colons",
+			Usage: "use colons for display",
 		},
 		cli.StringFlag{
 			Name:  "u,local-user",
@@ -93,8 +111,33 @@ func main() {
 		if c.Bool("bsau") || (c.Bool("s") && c.Bool("b") && c.Bool("a")) {
 			//	TODO: verify userID matches stored kryptonite PGP key
 			signGit()
-		} else if c.Bool("sb") || c.Bool("blob-sign") {
+			return nil
+		}
+
+		profile, err := krdclient.RequestMe()
+		if err != nil {
+			return err
+		}
+
+		pgpFingerprint, err := profile.PGPPublicKeySHA1Fingerprint()
+		if err != nil {
+			return err
+		}
+
+		if (c.Bool("sign") || c.Bool("s")) && c.String("u") == pgpFingerprint {
 			signBlob()
+		} else if (c.Bool("sign") || c.Bool("s")) && c.String("u") == "" {
+			signBlob()
+		} else if c.Bool("fingerprint") && c.Bool("K") {
+
+			gpgFingerprintString, err := profile.PGPPublicKeyGPGFingerprintString()
+			if err != nil {
+				os.Stdout.WriteString("err: " + err.Error() + "\n")
+				return err
+			}
+			os.Stdout.WriteString(gpgFingerprintString + "\n")
+			//os.Stdout.WriteString("fpr:::::::::" + strings.ToUpper(pgpFingerprint) + ":\n")
+			return nil
 		} else {
 			redirectToGPG()
 		}
@@ -263,12 +306,14 @@ func signGitTag(object string, reader *bufio.Reader) {
 
 func signBlob() {
 	reader := bufio.NewReader(os.Stdin)
-	blob, err := ioutil.ReadAll(reader)
+	blobBytes, err := ioutil.ReadAll(reader)
 	if err != nil {
 		stderr.WriteString("error parsing blob")
 		stderr.WriteString(err.Error())
 		os.Exit(1)
 	}
+
+	blob := strings.TrimSpace(string(blobBytes))
 
 	request, err := kr.NewRequest()
 	if err != nil {
@@ -278,7 +323,7 @@ func signBlob() {
 
 	startLogger(request.NotifyPrefix())
 	request.BlobSignRequest = &kr.BlobSignRequest{
-		Blob: string(blob),
+		Blob: blob,
 	}
 	stderr.WriteString(kr.Cyan("Kryptonite ▶ Requesting blob signature from phone") + "\r\n")
 	response := requestBlobSignature(request)
