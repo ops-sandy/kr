@@ -263,7 +263,7 @@ func mePGPFingerprintCommand(c *cli.Context) (err error) {
 	}
 	fmt.Println(pgp)
 
-	PrintErr(os.Stderr, "\r\nThis is your PGP Public Key fingerprint. To view your PGP Public Key, run "+kr.Cyan("kr me pgp")+". Type"+kr.Cyan("kr")+" to see all available commands.")
+	PrintErr(os.Stderr, "\r\nThis is your PGP Public Key fingerprint. To view your PGP Public Key, run "+kr.Cyan("kr me pgp")+". Type "+kr.Cyan("kr")+" to see all available commands.")
 
 	kr.Analytics{}.PostEventUsingPersistedTrackingID("kr", "me pgp fingerprint", nil, nil)
 	return

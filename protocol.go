@@ -83,9 +83,15 @@ type GitSignResponse struct {
 	Error     *string `json:"error,omitempty"`
 }
 
+const (
+	BlobSignDetach    = "detach"
+	BlobSignAttach    = "attach"
+	BlobSignClearSign = "clearsign"
+)
+
 type BlobSignRequest struct {
-	Blob     string `json:"blob"`
-	Detached bool   `json:"detached"`
+	Blob    string `json:"blob"`
+	SigType string `json:"sig_type"`
 }
 
 type BlobSignResponse struct {
@@ -115,13 +121,21 @@ func (gsr GitSignResponse) AsciiArmorSignature() (s string, err error) {
 	return
 }
 
-func (bsr BlobSignResponse) AsciiArmorSignature() (s string, err error) {
+func (bsr BlobSignResponse) AsciiArmorSignature(isDetached bool) (s string, err error) {
 	if bsr.Signature == nil {
 		err = fmt.Errorf("no signature")
 		return
 	}
 	output := &bytes.Buffer{}
-	input, err := armor.Encode(output, "PGP MESSAGE", map[string]string{"Comment": "Created With Kryptonite"})
+
+	var header string
+	if isDetached {
+		header = "PGP SIGNATURE"
+	} else {
+		header = "PGP MESSAGE"
+	}
+
+	input, err := armor.Encode(output, header, map[string]string{"Comment": "Created With Kryptonite"})
 	if err != nil {
 		return
 	}

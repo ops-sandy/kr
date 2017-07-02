@@ -65,6 +65,10 @@ func main() {
 			Usage: "Create an attached signature of a blob",
 		},
 		cli.BoolFlag{
+			Name:  "clearsign",
+			Usage: "Create a clear-signed signature",
+		},
+		cli.BoolFlag{
 			Name:  "s,sign",
 			Usage: "Create a signature",
 		},
@@ -124,14 +128,16 @@ func main() {
 			return err
 		}
 
-		if (c.Bool("sign") || c.Bool("s")) && c.String("u") == pgpFingerprint {
-			isDetached := c.Bool("b") || c.Bool("detach-sign")
-			signBlob(isDetached)
-		} else if (c.Bool("sign") || c.Bool("s")) && c.String("u") == "" {
-			isDetached := c.Bool("b") || c.Bool("detach-sign")
-			signBlob(isDetached)
+		if (c.Bool("sign") || c.Bool("s")) && (c.String("u") == pgpFingerprint || c.String("u") == "") {
+			if c.Bool("b") || c.Bool("detach-sign") {
+				signBlob(kr.BlobSignDetach)
+			} else {
+				signBlob(kr.BlobSignAttach)
+			}
 		} else if (c.Bool("b") || c.Bool("detach-sign")) && (c.String("u") == pgpFingerprint || c.String("u") == "") {
-			signBlob(true)
+			signBlob(kr.BlobSignDetach)
+		} else if c.Bool("clearsign") {
+			signBlob(kr.BlobSignClearSign)
 		} else if c.Bool("fingerprint") && c.Bool("K") {
 
 			gpgFingerprintString, err := profile.PGPPublicKeyGPGFingerprintString()
@@ -140,8 +146,6 @@ func main() {
 				return err
 			}
 			os.Stdout.WriteString(gpgFingerprintString + "\n")
-			//os.Stdout.WriteString("fpr:::::::::" + strings.ToUpper(pgpFingerprint) + ":\n")
-			return nil
 		} else {
 			redirectToGPG()
 		}
@@ -308,7 +312,7 @@ func signGitTag(object string, reader *bufio.Reader) {
 	os.Exit(0)
 }
 
-func signBlob(isDetached bool) {
+func signBlob(sigType string) {
 	reader := bufio.NewReader(os.Stdin)
 	blobBytes, err := ioutil.ReadAll(reader)
 	if err != nil {
@@ -327,16 +331,29 @@ func signBlob(isDetached bool) {
 
 	startLogger(request.NotifyPrefix())
 	request.BlobSignRequest = &kr.BlobSignRequest{
-		Blob:     blob,
-		Detached: isDetached,
+		Blob:    blob,
+		SigType: sigType,
 	}
 	stderr.WriteString(kr.Cyan("Kryptonite ▶ Requesting blob signature from phone") + "\r\n")
 	response := requestBlobSignature(request)
-	sig, err := response.AsciiArmorSignature()
+
+	isDetached := sigType != kr.BlobSignAttach
+	sig, err := response.AsciiArmorSignature(isDetached)
 	if err != nil {
 		stderr.WriteString(err.Error())
 		os.Exit(1)
 	}
+
+	if sigType == kr.BlobSignClearSign {
+		os.Stdout.WriteString("-----BEGIN PGP SIGNED MESSAGE-----")
+		os.Stdout.Write([]byte("\n"))
+		os.Stdout.WriteString("Hash: SHA512")
+		os.Stdout.Write([]byte("\n"))
+		os.Stdout.Write([]byte("\n"))
+		os.Stdout.WriteString(blob)
+		os.Stdout.Write([]byte("\n"))
+	}
+
 	os.Stdout.WriteString(sig)
 	os.Stdout.Write([]byte("\n"))
 	os.Stdout.Close()
